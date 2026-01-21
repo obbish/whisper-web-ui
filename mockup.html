@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Transkribering - Whisper Demo</title>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --bg-color: #f4f7f6;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --border-radius: 12px;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background-color: var(--card-bg);
+            width: 100%;
+            max-width: 600px;
+            padding: 40px;
+            border-radius: var(--border-radius);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+
+        p.subtitle {
+            color: #7f8c8d;
+            margin-bottom: 30px;
+        }
+
+        /* File Upload Styling */
+        .upload-area {
+            border: 2px dashed #bdc3c7;
+            border-radius: var(--border-radius);
+            padding: 40px 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            border-color: var(--primary-color);
+            background-color: #ebf5fb;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+
+        input[type="file"] {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        /* Button Styling */
+        .btn-transcribe {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 30px;
+            cursor: pointer;
+            margin-top: 25px;
+            width: 100%;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+
+        .btn-transcribe:hover {
+            background-color: #357abd;
+        }
+
+        .btn-transcribe:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        /* Status & Progress */
+        .status-container {
+            margin-top: 25px;
+            display: none; /* Hidden by default */
+            text-align: left;
+        }
+
+        .progress-bar-bg {
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            height: 8px;
+            width: 100%;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background-color: var(--primary-color);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .status-text {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Result Area */
+        .result-area {
+            margin-top: 30px;
+            text-align: left;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+            display: none; /* Hidden by default */
+        }
+
+        .result-area h3 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+
+        .transcription-box {
+            background-color: #fafafa;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 150px;
+            line-height: 1.6;
+            color: #444;
+            white-space: pre-wrap;
+        }
+
+        /* Cursor blinking effect for typing simulation */
+        .cursor::after {
+            content: '|';
+            animation: blink 1s step-start infinite;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Ljud till Text</h1>
+    <p class="subtitle">Ladda upp din ljudfil (MP3, WAV, M4A) för att transkribera med Whisper AI.</p>
+
+    <div class="upload-area" id="drop-zone">
+        <div class="upload-icon">☁️</div>
+        <p id="file-label">Dra och släpp filen här, eller klicka för att bläddra</p>
+        <input type="file" id="file-input" accept=".mp3,.wav,.m4a">
+    </div>
+
+    <div class="status-container" id="status-container">
+        <div class="status-text">
+            <span id="status-message">Laddar upp...</span>
+            <span id="percentage">0%</span>
+        </div>
+        <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progress-fill"></div>
+        </div>
+    </div>
+
+    <button class="btn-transcribe" id="transcribe-btn" onclick="startDemo()">Starta Transkribering</button>
+
+    <div class="result-area" id="result-area">
+        <h3>Transkribering</h3>
+        <div class="transcription-box" id="output-text"></div>
+    </div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('file-input');
+    const fileLabel = document.getElementById('file-label');
+    const dropZone = document.getElementById('drop-zone');
+    const transcribeBtn = document.getElementById('transcribe-btn');
+    const statusContainer = document.getElementById('status-container');
+    const progressFill = document.getElementById('progress-fill');
+    const statusMessage = document.getElementById('status-message');
+    const percentage = document.getElementById('percentage');
+    const resultArea = document.getElementById('result-area');
+    const outputText = document.getElementById('output-text');
+
+    // Handle file selection visuals
+    fileInput.addEventListener('change', function() {
+        if (this.files && this.files[0]) {
+            fileLabel.innerHTML = `<strong>Vald fil:</strong> ${this.files[0].name}`;
+            dropZone.style.borderColor = '#4a90e2';
+            dropZone.style.backgroundColor = '#ebf5fb';
+        }
+    });
+
+    // The Fake Demo Logic
+    function startDemo() {
+        // Reset UI
+        if (!fileInput.files.length) {
+            alert("Vänligen välj en fil först.");
+            return;
+        }
+
+        transcribeBtn.disabled = true;
+        transcribeBtn.innerText = "Bearbetar...";
+        statusContainer.style.display = "block";
+        resultArea.style.display = "none";
+        outputText.innerHTML = "";
+        
+        // 1. Simulate Upload (Fast)
+        let width = 0;
+        const uploadInterval = setInterval(() => {
+            if (width >= 100) {
+                clearInterval(uploadInterval);
+                startProcessingPhase();
+            } else {
+                width += 5;
+                progressFill.style.width = width + "%";
+                percentage.innerText = width + "%";
+            }
+        }, 100);
+    }
+
+    function startProcessingPhase() {
+        statusMessage.innerText = "AI Bearbetar ljudfil...";
+        progressFill.style.backgroundColor = "#2ecc71"; // Change to green
+        
+        // Wait a moment to simulate server crunching
+        setTimeout(() => {
+            statusContainer.style.display = "none";
+            resultArea.style.display = "block";
+            typeWriterEffect();
+        }, 1500);
+    }
+
+    // Dummy text to simulate Whisper output
+    const dummyText = "Detta är ett exempel på hur en transkriberings-sida kan fungera. Användaren lägger upp en ljudfil från dator eller mobil, och sajten konverterar allt tal den hittar till text, som skrivs ut här vartefter. Modellerna hanterar svenska språket bra, inklusive grammatik, komma och punkter. Texten växer fram allt eftersom modellen arbetar. Inga filer lämnar skolans nätverk, och ingen information når Internet. Alla tillfälliga filer raderas, och det är upp till användaren att kopiera och spara texten där hen vill.";
+
+    function typeWriterEffect() {
+        outputText.classList.add("cursor");
+        let i = 0;
+        const speed = 30; // Typing speed in ms
+
+        function type() {
+            if (i < dummyText.length) {
+                outputText.innerHTML += dummyText.charAt(i);
+                i++;
+                setTimeout(type, speed);
+            } else {
+                outputText.classList.remove("cursor");
+                transcribeBtn.disabled = false;
+                transcribeBtn.innerText = "Starta Transkribering";
+            }
+        }
+        type();
+    }
+</script>
+
+</body>
+</html>
