@@ -102,6 +102,12 @@
             margin: 0 auto 10px auto;
         }
 
+        #status-text {
+            font-size: 14px;
+            color: #666;
+            margin-top: 10px;
+        }
+
         @keyframes spin {
             0% {
                 transform: rotate(0deg);
@@ -148,7 +154,9 @@
 
         <div class="form-group">
             <label>1. Select Audio File</label>
-            <input type="file" id="audioFile" accept=".mp3,.wav,.m4a,.mp4">
+            <input type="file" id="audioFile" accept="audio/*,video/*">
+            <small style="color: #86868b; display: block; margin-top: 5px;">Supports MP3, WAV, M4A, MP4, MOV
+                (Auto-converted to 16kHz WAV)</small>
         </div>
 
         <div class="form-group">
@@ -222,7 +230,7 @@
 
         <div class="loader" id="loader">
             <div class="spinner"></div>
-            <p>Processing... (This may take a few minutes)</p>
+            <p id="status-text">Processing...</p>
         </div>
 
         <div id="result-area">
@@ -240,6 +248,7 @@
             const fileInput = document.getElementById('audioFile');
             const langInput = document.getElementById('language');
             const loader = document.getElementById('loader');
+            const statusText = document.getElementById('status-text');
             const btn = document.getElementById('submitBtn');
             const resultArea = document.getElementById('result-area');
             const textBox = document.getElementById('transcriptionText');
@@ -249,19 +258,27 @@
                 return;
             }
 
+            const originalFile = fileInput.files[0];
+
             // Reset UI
             btn.disabled = true;
             loader.style.display = "block";
             resultArea.style.display = "none";
             textBox.value = "";
-
-            // Prepare Data
-            const formData = new FormData();
-            formData.append("file", fileInput.files[0]);
-            formData.append("language", langInput.value);
-            formData.append("response_format", "text");
+            statusText.innerText = "Preparing audio (Decoding & Resampling)...";
 
             try {
+                // 1. Convert any input audio to 16kHz WAV
+                const wavFile = await convertAudioToWav(originalFile);
+
+                statusText.innerText = "Uploading to server & Transcribing...";
+
+                // Prepare Data
+                const formData = new FormData();
+                formData.append("file", wavFile, "audio.wav"); // Send as 'audio.wav'
+                formData.append("language", langInput.value);
+                formData.append("response_format", "text");
+
                 const response = await fetch(SERVER_URL, {
                     method: "POST",
                     body: formData
@@ -275,10 +292,103 @@
                 textBox.value = text;
                 resultArea.style.display = "block";
             } catch (error) {
+                console.error(error);
                 alert("Error: " + error.message);
             } finally {
                 loader.style.display = "none";
                 btn.disabled = false;
+            }
+        }
+
+        // --- Audio Conversion Logic (Web Audio API) ---
+
+        async function convertAudioToWav(file) {
+            // Create an AudioContext (standard is usually 44.1 or 48k)
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const arrayBuffer = await file.arrayBuffer();
+
+            // Decode the audio data (handles m4a, mp3, mp4, etc. natively)
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+            // Whisper expects 16000Hz. If the file is already 16k, we can use it, 
+            // but it's safer to always run through the resampler to ensure clean data.
+            const targetSampleRate = 16000;
+
+            // Create an OfflineContext at 16000Hz to perform the resampling
+            const offlineCtx = new OfflineAudioContext(
+                1, // Force Mono (Whisper uses mono)
+                audioBuffer.duration * targetSampleRate,
+                targetSampleRate
+            );
+
+            // Create a buffer source for the offline context
+            const source = offlineCtx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(offlineCtx.destination);
+            source.start();
+
+            // Render the audio into a new buffer at 16kHz
+            const resampledBuffer = await offlineCtx.startRendering();
+
+            // Convert raw PCM data to WAV file format
+            return bufferToWavBlob(resampledBuffer);
+        }
+
+        function bufferToWavBlob(audioBuffer) {
+            const numOfChan = 1; // We enforced mono above
+            const length = audioBuffer.length * numOfChan * 2 + 44;
+            const buffer = new ArrayBuffer(length);
+            const view = new DataView(buffer);
+            const channels = [];
+            let i;
+            let sample;
+            let offset = 0;
+            let pos = 0;
+
+            // Get PCM data
+            for (i = 0; i < audioBuffer.numberOfChannels; i++)
+                channels.push(audioBuffer.getChannelData(i));
+
+            // Write WAV Header
+            setUint32(0x46464952); // "RIFF"
+            setUint32(length - 8); // file length - 8
+            setUint32(0x45564157); // "WAVE"
+
+            setUint32(0x20746d66); // "fmt " chunk
+            setUint32(16); // length = 16
+            setUint16(1); // PCM (uncompressed)
+            setUint16(numOfChan);
+            setUint32(audioBuffer.sampleRate);
+            setUint32(audioBuffer.sampleRate * 2 * numOfChan); // avg. bytes/sec
+            setUint16(numOfChan * 2); // block-align
+            setUint16(16); // 16-bit (hardcoded)
+
+            setUint32(0x61746164); // "data" - chunk
+            setUint32(length - pos - 4); // chunk length
+
+            // Write interleaved data
+            while (pos < audioBuffer.length) {
+                for (i = 0; i < numOfChan; i++) {
+                    // clamp
+                    sample = Math.max(-1, Math.min(1, channels[i][pos]));
+                    // scale to 16-bit integer
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    view.setInt16(offset, sample, true);
+                    offset += 2;
+                }
+                pos++;
+            }
+
+            return new Blob([buffer], { type: "audio/wav" });
+
+            function setUint16(data) {
+                view.setUint16(offset, data, true);
+                offset += 2;
+            }
+
+            function setUint32(data) {
+                view.setUint32(offset, data, true);
+                offset += 4;
             }
         }
 
