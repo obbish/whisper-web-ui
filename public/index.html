@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper Queue Client</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #1e293b;
+            --border: #e2e8f0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 1.5rem;
+            color: var(--primary);
+        }
+
+        .file-drop-area {
+            border: 2px dashed var(--primary);
+            padding: 2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 1.5rem;
+        }
+
+        .file-drop-area:hover {
+            background: #eff6ff;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            font-size: 1rem;
+            transition: opacity 0.2s;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 1.5rem;
+            font-weight: 500;
+            min-height: 1.5em;
+        }
+
+        #result {
+            margin-top: 1.5rem;
+            width: 100%;
+            height: 150px;
+            padding: 0.75rem;
+            box-sizing: border-box;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: monospace;
+            resize: vertical;
+            display: none;
+        }
+
+        .loader {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid var(--primary);
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Whisper Queue</h1>
+
+        <label class="file-drop-area">
+            <span id="file-label">Click to select Audio File</span>
+            <input type="file" id="audio-input" accept="audio/*,video/*">
+        </label>
+
+        <button id="upload-btn" disabled>Upload & Transcribe</button>
+
+        <div id="status"></div>
+        <textarea id="result" readonly placeholder="Transcription will appear here..."></textarea>
+    </div>
+
+    <script>
+        const audioInput = document.getElementById('audio-input');
+        const uploadBtn = document.getElementById('upload-btn');
+        const statusDiv = document.getElementById('status');
+        const resultArea = document.getElementById('result');
+        const fileLabel = document.getElementById('file-label');
+
+        let selectedFile = null;
+
+        audioInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                selectedFile = e.target.files[0];
+                fileLabel.textContent = selectedFile.name;
+                uploadBtn.disabled = false;
+                resultArea.style.display = 'none';
+                statusDiv.textContent = '';
+            }
+        });
+
+        uploadBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            try {
+                uploadBtn.disabled = true;
+                updateStatus('Converting audio to 16kHz WAV...', true);
+
+                // 1. Convert to 16kHz Mono WAV
+                const wavBlob = await convertToWav(selectedFile);
+
+                updateStatus('Uploading to queue...', true);
+
+                // 2. Upload
+                const formData = new FormData();
+                formData.append('file', wavBlob, 'audio.wav');
+
+                const uploadRes = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!uploadRes.ok) throw new Error('Upload failed');
+
+                const { id } = await uploadRes.json();
+
+                // 3. Poll Status
+                pollStatus(id);
+
+            } catch (err) {
+                console.error(err);
+                updateStatus(`Error: ${err.message}`);
+                uploadBtn.disabled = false;
+            }
+        });
+
+        async function pollStatus(jobId) {
+            const interval = setInterval(async () => {
+                try {
+                    const res = await fetch(`/status/${jobId}`);
+                    const data = await res.json();
+
+                    if (data.status === 'queued') {
+                        updateStatus(`Waiting in line (Position: ${data.position})...`, true);
+                    } else if (data.status === 'processing') {
+                        updateStatus('Processing on Whisper server...', true);
+                    } else if (data.status === 'done') {
+                        clearInterval(interval);
+                        updateStatus('Done!');
+                        resultArea.value = data.result;
+                        resultArea.style.display = 'block';
+                        uploadBtn.disabled = false;
+                    } else if (data.status === 'error') {
+                        clearInterval(interval);
+                        updateStatus(`Server Error: ${data.error}`);
+                        uploadBtn.disabled = false;
+                    }
+                } catch (err) {
+                    clearInterval(interval);
+                    updateStatus('Network Error during polling');
+                    uploadBtn.disabled = false;
+                }
+            }, 1000);
+        }
+
+        function updateStatus(text, loading = false) {
+            statusDiv.innerHTML = loading ? `<span class="loader"></span>${text}` : text;
+        }
+
+        // --- Audio Conversion Logic ---
+
+        async function convertToWav(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+            // Resample to 16000Hz
+            const offlineContext = new OfflineAudioContext(
+                1, // Mono
+                audioBuffer.duration * 16000,
+                16000
+            );
+
+            const source = offlineContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(offlineContext.destination);
+            source.start();
+
+            const resampledBuffer = await offlineContext.startRendering();
+            return bufferToWav(resampledBuffer); // Returns Blob
+        }
+
+        function bufferToWav(abuffer) {
+            const numOfChan = abuffer.numberOfChannels;
+            const length = abuffer.length * numOfChan * 2 + 44;
+            const buffer = new ArrayBuffer(length);
+            const view = new DataView(buffer);
+            const channels = [];
+            let i;
+            let sample;
+            let offset = 0;
+            let pos = 0;
+
+            // write WAV header
+            setUint32(0x46464952);                         // "RIFF"
+            setUint32(length - 8);                         // file length - 8
+            setUint32(0x45564157);                         // "WAVE"
+
+            setUint32(0x20746d66);                         // "fmt " chunk
+            setUint32(16);                                 // length = 16
+            setUint16(1);                                  // PCM (uncompressed)
+            setUint16(numOfChan);
+            setUint32(abuffer.sampleRate);
+            setUint32(abuffer.sampleRate * 2 * numOfChan); // avg. bytes/sec
+            setUint16(numOfChan * 2);                      // block-align
+            setUint16(16);                                 // 16-bit (hardcoded in this example)
+
+            setUint32(0x61746164);                         // "data" - chunk
+            setUint32(length - pos - 4);                   // chunk length
+
+            // write interleaved data
+            for (i = 0; i < abuffer.numberOfChannels; i++)
+                channels.push(abuffer.getChannelData(i));
+
+            while (pos < abuffer.length) {
+                for (i = 0; i < numOfChan; i++) {             // interleave channels
+                    sample = Math.max(-1, Math.min(1, channels[i][pos])); // clamp
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0; // scale to 16-bit signed int
+                    view.setInt16(44 + offset, sample, true); // write 16-bit sample
+                    offset += 2;
+                }
+                pos++;
+            }
+
+            return new Blob([buffer], { type: 'audio/wav' });
+
+            function setUint16(data) {
+                view.setUint16(pos, data, true);
+                pos += 2;
+            }
+
+            function setUint32(data) {
+                view.setUint32(pos, data, true);
+                pos += 4;
+            }
+        }
+    </script>
+</body>
+
+</html>
