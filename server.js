@@ -20,7 +20,7 @@ const upload = multer({ dest: 'uploads/' });
 
 // In-memory Job Store and Queue
 const jobQueue = [];
-const jobs = {}; // Map UUID -> { status, position, result, error }
+const jobs = {}; // Map UUID -> { status, position, result, error, lastSeen }
 let isProcessing = false;
 
 // Ensure uploads directory exists
@@ -41,6 +41,25 @@ async function processQueue() {
     const jobId = jobQueue.shift(); // FIFO: Get first job
     const job = jobs[jobId];
 
+    // --- TTL CHECK (Abandoned in Queue) ---
+    // If client hasn't polled in > 20 seconds, skip this job.
+    if (Date.now() - job.lastSeen > 20000) {
+        console.log(`Job ${jobId} abandoned by client. Skipping.`);
+        job.status = 'abandoned';
+        job.error = 'Job abandoned by client';
+
+        // Cleanup file immediately
+        if (job.filePath && fs.existsSync(job.filePath)) {
+            fs.unlink(job.filePath, (err) => {
+                if (err) console.error(`Failed to delete abandoned file for ${jobId}:`, err);
+            });
+        }
+
+        isProcessing = false;
+        processQueue(); // Immediately pick up next job
+        return;
+    }
+
     // Update status to processing
     job.status = 'processing';
     job.position = null; // No longer in line
@@ -52,6 +71,20 @@ async function processQueue() {
         }
     });
 
+    const controller = new AbortController();
+
+    // --- ACTIVE MONITORING (Heartbeat Check) ---
+    // Check every 5 seconds if the client is still there
+    const heartbeatInterval = setInterval(() => {
+        if (Date.now() - job.lastSeen > 20000) {
+            console.log(`Client disconnected during processing job ${jobId}. Aborting.`);
+            controller.abort(); // Cancel the fetch request
+            job.status = 'abandoned';
+            job.error = 'Client disconnected';
+            // Interval will be cleared in finally block
+        }
+    }, 5000);
+
     try {
         console.log(`Processing job: ${jobId}`);
 
@@ -59,23 +92,22 @@ async function processQueue() {
         const formData = new FormData();
         formData.append('file', fs.createReadStream(job.filePath));
         formData.append('language', job.language || 'auto');
-        formData.append('response_format', 'text'); // Force text format for simpler handling
+        formData.append('response_format', 'text');
 
-        // Send to Whisper server
+        // Send to Whisper server with AbortSignal
         const response = await fetch('http://127.0.0.1:8080/inference', {
             method: 'POST',
             body: formData,
-            headers: formData.getHeaders()
+            headers: formData.getHeaders(),
+            signal: controller.signal
         });
 
         if (!response.ok) {
             throw new Error(`Whisper server responded with ${response.status}`);
         }
 
-        // Handle text response since we requested response_format='text'
         const text = await response.text();
 
-        // If the server returns JSON despite 'text' format (some do), try to parse it
         try {
             const json = JSON.parse(text);
             job.result = json.text || text;
@@ -83,17 +115,30 @@ async function processQueue() {
             job.result = text;
         }
 
-        job.status = 'done';
+        if (job.status !== 'abandoned') {
+            job.status = 'done';
+        }
 
     } catch (error) {
-        console.error(`Error processing job ${jobId}:`, error);
-        job.error = error.message;
-        job.status = 'error';
+        if (error.name === 'AbortError') {
+            console.log(`Job ${jobId} aborted successfully.`);
+            // Status/Error already set in interval check, but ensure consistency
+            job.status = 'abandoned';
+            job.error = 'Client disconnected';
+        } else {
+            console.error(`Error processing job ${jobId}:`, error);
+            job.error = error.message;
+            job.status = 'error';
+        }
     } finally {
+        clearInterval(heartbeatInterval);
+
         // Cleanup: Delete the temp file
-        fs.unlink(job.filePath, (err) => {
-            if (err) console.error(`Failed to delete temp file for ${jobId}:`, err);
-        });
+        if (job.filePath) {
+            fs.unlink(job.filePath, (err) => {
+                if (err && err.code !== 'ENOENT') console.error(`Failed to delete temp file for ${jobId}:`, err);
+            });
+        }
 
         isProcessing = false;
         // Trigger next job check immediately
@@ -118,7 +163,8 @@ app.post('/upload', upload.single('file'), (req, res) => {
         position: position,
         filePath: req.file.path,
         language: language,
-        submittedAt: new Date()
+        submittedAt: new Date(),
+        lastSeen: Date.now() // Initialize Heartbeat
     };
 
     // Add to queue
@@ -139,6 +185,9 @@ app.get('/status/:id', (req, res) => {
     if (!job) {
         return res.status(404).json({ error: 'Job not found' });
     }
+
+    // --- UPDATE HEARTBEAT ---
+    job.lastSeen = Date.now();
 
     // Return clean status object
     const response = {
