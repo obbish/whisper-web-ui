@@ -4,244 +4,366 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Whisper Queue Client</title>
+    <title>Whisper Turbo Transcriber</title>
     <style>
         :root {
-            --primary: #2563eb;
-            --bg: #f8fafc;
-            --surface: #ffffff;
-            --text: #1e293b;
-            --border: #e2e8f0;
+            --primary: #007AFF;
+            /* Apple Blue */
+            --bg: #F5F5F7;
+            --card: #FFFFFF;
+            --text: #1D1D1F;
         }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
             color: var(--text);
             display: flex;
             justify-content: center;
-            align-items: center;
-            min-height: 100vh;
+            padding: 40px 20px;
             margin: 0;
         }
 
         .container {
-            background: var(--surface);
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            background: var(--card);
+            padding: 40px;
+            border-radius: 18px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
             width: 100%;
-            max-width: 500px;
-            text-align: center;
+            max-width: 600px;
         }
 
         h1 {
-            margin-bottom: 1.5rem;
-            color: var(--primary);
+            margin-top: 0;
+            font-size: 24px;
+            font-weight: 600;
+            text-align: center;
         }
 
-        .file-drop-area {
-            border: 2px dashed var(--primary);
-            padding: 2rem;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background 0.2s;
-            margin-bottom: 1.5rem;
+        .form-group {
+            margin-bottom: 20px;
         }
 
-        .file-drop-area:hover {
-            background: #eff6ff;
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            font-size: 14px;
+            color: #86868b;
         }
 
-        input[type="file"] {
-            display: none;
+        input[type="file"],
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d2d2d7;
+            border-radius: 10px;
+            font-size: 16px;
+            box-sizing: border-box;
+            /* Fixes padding width issues */
         }
 
         button {
-            background: var(--primary);
+            width: 100%;
+            background-color: var(--primary);
             color: white;
             border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 6px;
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 17px;
             font-weight: 600;
             cursor: pointer;
-            width: 100%;
-            font-size: 1rem;
-            transition: opacity 0.2s;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background-color: #0062cc;
         }
 
         button:disabled {
-            opacity: 0.6;
+            background-color: #99c7ff;
             cursor: not-allowed;
         }
 
-        #status {
-            margin-top: 1.5rem;
-            font-weight: 500;
-            min-height: 1.5em;
-        }
-
-        #result {
-            margin-top: 1.5rem;
-            width: 100%;
-            height: 150px;
-            padding: 0.75rem;
-            box-sizing: border-box;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            font-family: monospace;
-            resize: vertical;
-            display: none;
-        }
-
+        /* Loading Spinner */
         .loader {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border: 2px solid var(--primary);
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary);
             border-radius: 50%;
-            border-top-color: transparent;
+            width: 30px;
+            height: 30px;
             animation: spin 1s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
+            margin: 0 auto 10px auto;
+        }
+
+        #status-text {
+            font-size: 14px;
+            color: #666;
+            margin-top: 10px;
         }
 
         @keyframes spin {
-            to {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
                 transform: rotate(360deg);
             }
+        }
+
+        /* Results Area */
+        #result-area {
+            display: none;
+            margin-top: 30px;
+            border-top: 1px solid #e5e5e5;
+            padding-top: 20px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 300px;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #d2d2d7;
+            font-family: monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+
+        .download-btn {
+            background-color: #34c759;
+            /* Apple Green */
+            margin-top: 10px;
         }
     </style>
 </head>
 
 <body>
+
     <div class="container">
-        <h1>Whisper Queue</h1>
+        <h1>🎙️ Whisper Turbo</h1>
 
-        <label class="file-drop-area">
-            <span id="file-label">Click to select Audio File</span>
-            <input type="file" id="audio-input" accept="audio/*,video/*">
-        </label>
+        <div class="form-group">
+            <label>1. Select Audio File</label>
+            <input type="file" id="audioFile" accept="audio/*,video/*">
+            <small style="color: #86868b; display: block; margin-top: 5px;">Supports MP3, WAV, M4A, MP4, MOV
+                (Auto-converted to 16kHz WAV)</small>
+        </div>
 
-        <button id="upload-btn" disabled>Upload & Transcribe</button>
+        <div class="form-group">
+            <label>2. Language</label>
+            <select id="language">
+                <option value="sv" selected>Swedish</option>
+                <option value="en">English</option>
+                <option value="auto">Auto-Detect</option>
+                <option disabled>────────────────────</option>
+                <option value="af">Afrikaans</option>
+                <option value="ar">Arabic</option>
+                <option value="hy">Armenian</option>
+                <option value="az">Azerbaijani</option>
+                <option value="be">Belarusian</option>
+                <option value="bs">Bosnian</option>
+                <option value="bg">Bulgarian</option>
+                <option value="ca">Catalan</option>
+                <option value="zh">Chinese</option>
+                <option value="hr">Croatian</option>
+                <option value="cs">Czech</option>
+                <option value="da">Danish</option>
+                <option value="nl">Dutch</option>
+                <option value="en">English</option>
+                <option value="et">Estonian</option>
+                <option value="fi">Finnish</option>
+                <option value="fr">French</option>
+                <option value="gl">Galician</option>
+                <option value="de">German</option>
+                <option value="el">Greek</option>
+                <option value="he">Hebrew</option>
+                <option value="hi">Hindi</option>
+                <option value="hu">Hungarian</option>
+                <option value="is">Icelandic</option>
+                <option value="id">Indonesian</option>
+                <option value="it">Italian</option>
+                <option value="ja">Japanese</option>
+                <option value="kn">Kannada</option>
+                <option value="kk">Kazakh</option>
+                <option value="ko">Korean</option>
+                <option value="lv">Latvian</option>
+                <option value="lt">Lithuanian</option>
+                <option value="mk">Macedonian</option>
+                <option value="ms">Malay</option>
+                <option value="mi">Maori</option>
+                <option value="mr">Marathi</option>
+                <option value="ne">Nepali</option>
+                <option value="no">Norwegian</option>
+                <option value="fa">Persian</option>
+                <option value="pl">Polish</option>
+                <option value="pt">Portuguese</option>
+                <option value="ro">Romanian</option>
+                <option value="ru">Russian</option>
+                <option value="sr">Serbian</option>
+                <option value="sk">Slovak</option>
+                <option value="sl">Slovenian</option>
+                <option value="es">Spanish</option>
+                <option value="sw">Swahili</option>
+                <option value="sv">Swedish</option>
+                <option value="tl">Tagalog</option>
+                <option value="ta">Tamil</option>
+                <option value="th">Thai</option>
+                <option value="tr">Turkish</option>
+                <option value="uk">Ukrainian</option>
+                <option value="ur">Urdu</option>
+                <option value="vi">Vietnamese</option>
+                <option value="cy">Welsh</option>
+            </select>
+        </div>
 
-        <div id="status"></div>
-        <textarea id="result" readonly placeholder="Transcription will appear here..."></textarea>
+        <button onclick="uploadAndTranscribe()" id="submitBtn">Transcribe Audio</button>
+
+        <div class="loader" id="loader">
+            <div class="spinner"></div>
+            <p id="status-text">Processing...</p>
+        </div>
+
+        <div id="result-area">
+            <label>Transcription Result:</label>
+            <textarea id="transcriptionText" readonly></textarea>
+            <button class="download-btn" onclick="downloadText()">Download .txt</button>
+        </div>
     </div>
 
     <script>
-        const audioInput = document.getElementById('audio-input');
-        const uploadBtn = document.getElementById('upload-btn');
-        const statusDiv = document.getElementById('status');
-        const resultArea = document.getElementById('result');
-        const fileLabel = document.getElementById('file-label');
+        // Use relative path to middleware
+        const UPLOAD_URL = "/upload";
+        const STATUS_URL = "/status/";
 
-        let selectedFile = null;
+        async function uploadAndTranscribe() {
+            const fileInput = document.getElementById('audioFile');
+            const langInput = document.getElementById('language');
+            const loader = document.getElementById('loader');
+            const statusText = document.getElementById('status-text');
+            const btn = document.getElementById('submitBtn');
+            const resultArea = document.getElementById('result-area');
+            const textBox = document.getElementById('transcriptionText');
 
-        audioInput.addEventListener('change', (e) => {
-            if (e.target.files[0]) {
-                selectedFile = e.target.files[0];
-                fileLabel.textContent = selectedFile.name;
-                uploadBtn.disabled = false;
-                resultArea.style.display = 'none';
-                statusDiv.textContent = '';
+            if (fileInput.files.length === 0) {
+                alert("Please select a file first!");
+                return;
             }
-        });
 
-        uploadBtn.addEventListener('click', async () => {
-            if (!selectedFile) return;
+            const originalFile = fileInput.files[0];
+
+            // Reset UI
+            btn.disabled = true;
+            loader.style.display = "block";
+            resultArea.style.display = "none";
+            textBox.value = "";
+            statusText.innerText = "Converting audio to 16kHz WAV...";
 
             try {
-                uploadBtn.disabled = true;
-                updateStatus('Converting audio to 16kHz WAV...', true);
+                // 1. Convert any input audio to 16kHz WAV
+                const wavFile = await convertAudioToWav(originalFile);
 
-                // 1. Convert to 16kHz Mono WAV
-                const wavBlob = await convertToWav(selectedFile);
+                statusText.innerText = "Uploading to queue...";
 
-                updateStatus('Uploading to queue...', true);
-
-                // 2. Upload
+                // Prepare Data
                 const formData = new FormData();
-                formData.append('file', wavBlob, 'audio.wav');
+                formData.append("file", wavFile, "audio.wav"); // Send as 'audio.wav'
+                formData.append("language", langInput.value);
 
-                const uploadRes = await fetch('/upload', {
-                    method: 'POST',
+                // 2. Upload to Queue
+                const uploadResponse = await fetch(UPLOAD_URL, {
+                    method: "POST",
                     body: formData
                 });
 
-                if (!uploadRes.ok) throw new Error('Upload failed');
+                if (!uploadResponse.ok) throw new Error("Upload failed: " + uploadResponse.statusText);
 
-                const { id } = await uploadRes.json();
+                const { id } = await uploadResponse.json();
 
                 // 3. Poll Status
                 pollStatus(id);
 
-            } catch (err) {
-                console.error(err);
-                updateStatus(`Error: ${err.message}`);
-                uploadBtn.disabled = false;
+            } catch (error) {
+                console.error(error);
+                alert("Error: " + error.message);
+                loader.style.display = "none";
+                btn.disabled = false;
             }
-        });
+        }
 
-        async function pollStatus(jobId) {
+        function pollStatus(jobId) {
+            const statusText = document.getElementById('status-text');
+            const loader = document.getElementById('loader');
+            const btn = document.getElementById('submitBtn');
+            const resultArea = document.getElementById('result-area');
+            const textBox = document.getElementById('transcriptionText');
+
             const interval = setInterval(async () => {
                 try {
-                    const res = await fetch(`/status/${jobId}`);
+                    const res = await fetch(STATUS_URL + jobId);
                     const data = await res.json();
 
                     if (data.status === 'queued') {
-                        updateStatus(`Waiting in line (Position: ${data.position})...`, true);
+                        statusText.innerText = `Waiting in line (Position: ${data.position})...`;
                     } else if (data.status === 'processing') {
-                        updateStatus('Processing on Whisper server...', true);
+                        statusText.innerText = 'Processing on Whisper server...';
                     } else if (data.status === 'done') {
                         clearInterval(interval);
-                        updateStatus('Done!');
-                        resultArea.value = data.result;
-                        resultArea.style.display = 'block';
-                        uploadBtn.disabled = false;
+                        loader.style.display = "none";
+                        btn.disabled = false;
+
+                        textBox.value = data.result;
+                        resultArea.style.display = "block";
                     } else if (data.status === 'error') {
                         clearInterval(interval);
-                        updateStatus(`Server Error: ${data.error}`);
-                        uploadBtn.disabled = false;
+                        alert(`Server Error: ${data.error}`);
+                        loader.style.display = "none";
+                        btn.disabled = false;
                     }
                 } catch (err) {
                     clearInterval(interval);
-                    updateStatus('Network Error during polling');
-                    uploadBtn.disabled = false;
+                    alert("Network Error during polling");
+                    loader.style.display = "none";
+                    btn.disabled = false;
                 }
             }, 1000);
         }
 
-        function updateStatus(text, loading = false) {
-            statusDiv.innerHTML = loading ? `<span class="loader"></span>${text}` : text;
-        }
+        // --- Audio Conversion Logic (Web Audio API) ---
 
-        // --- Audio Conversion Logic ---
-
-        async function convertToWav(file) {
-            const arrayBuffer = await file.arrayBuffer();
+        async function convertAudioToWav(file) {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            const targetSampleRate = 16000;
 
-            // Resample to 16000Hz
-            const offlineContext = new OfflineAudioContext(
-                1, // Mono
-                audioBuffer.duration * 16000,
-                16000
+            const offlineCtx = new OfflineAudioContext(
+                1, // Force Mono
+                audioBuffer.duration * targetSampleRate,
+                targetSampleRate
             );
 
-            const source = offlineContext.createBufferSource();
+            const source = offlineCtx.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(offlineContext.destination);
+            source.connect(offlineCtx.destination);
             source.start();
 
-            const resampledBuffer = await offlineContext.startRendering();
-            return bufferToWav(resampledBuffer); // Returns Blob
+            const resampledBuffer = await offlineCtx.startRendering();
+            return bufferToWavBlob(resampledBuffer);
         }
 
-        function bufferToWav(abuffer) {
-            const numOfChan = abuffer.numberOfChannels;
-            const length = abuffer.length * numOfChan * 2 + 44;
+        function bufferToWavBlob(audioBuffer) {
+            const numOfChan = 1;
+            const length = audioBuffer.length * numOfChan * 2 + 44;
             const buffer = new ArrayBuffer(length);
             const view = new DataView(buffer);
             const channels = [];
@@ -250,48 +372,46 @@
             let offset = 0;
             let pos = 0;
 
-            // write WAV header
-            setUint32(0x46464952);                         // "RIFF"
-            setUint32(length - 8);                         // file length - 8
-            setUint32(0x45564157);                         // "WAVE"
+            for (i = 0; i < audioBuffer.numberOfChannels; i++)
+                channels.push(audioBuffer.getChannelData(i));
 
-            setUint32(0x20746d66);                         // "fmt " chunk
-            setUint32(16);                                 // length = 16
-            setUint16(1);                                  // PCM (uncompressed)
+            setUint32(0x46464952); // "RIFF"
+            setUint32(length - 8); // file length - 8
+            setUint32(0x45564157); // "WAVE"
+            setUint32(0x20746d66); // "fmt " chunk
+            setUint32(16); // length = 16
+            setUint16(1); // PCM (uncompressed)
             setUint16(numOfChan);
-            setUint32(abuffer.sampleRate);
-            setUint32(abuffer.sampleRate * 2 * numOfChan); // avg. bytes/sec
-            setUint16(numOfChan * 2);                      // block-align
-            setUint16(16);                                 // 16-bit (hardcoded in this example)
+            setUint32(audioBuffer.sampleRate);
+            setUint32(audioBuffer.sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2);
+            setUint16(16); // 16-bit
+            setUint32(0x61746164); // "data" - chunk
+            setUint32(length - pos - 4);
 
-            setUint32(0x61746164);                         // "data" - chunk
-            setUint32(length - pos - 4);                   // chunk length
-
-            // write interleaved data
-            for (i = 0; i < abuffer.numberOfChannels; i++)
-                channels.push(abuffer.getChannelData(i));
-
-            while (pos < abuffer.length) {
-                for (i = 0; i < numOfChan; i++) {             // interleave channels
-                    sample = Math.max(-1, Math.min(1, channels[i][pos])); // clamp
-                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0; // scale to 16-bit signed int
-                    view.setInt16(44 + offset, sample, true); // write 16-bit sample
+            while (pos < audioBuffer.length) {
+                for (i = 0; i < numOfChan; i++) {
+                    sample = Math.max(-1, Math.min(1, channels[i][pos]));
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    view.setInt16(offset, sample, true);
                     offset += 2;
                 }
                 pos++;
             }
 
-            return new Blob([buffer], { type: 'audio/wav' });
+            return new Blob([buffer], { type: "audio/wav" });
 
-            function setUint16(data) {
-                view.setUint16(pos, data, true);
-                pos += 2;
-            }
+            function setUint16(data) { view.setUint16(offset, data, true); offset += 2; }
+            function setUint32(data) { view.setUint32(offset, data, true); offset += 4; }
+        }
 
-            function setUint32(data) {
-                view.setUint32(pos, data, true);
-                pos += 4;
-            }
+        function downloadText() {
+            const text = document.getElementById('transcriptionText').value;
+            const blob = new Blob([text], { type: "text/plain" });
+            const anchor = document.createElement("a");
+            anchor.href = URL.createObjectURL(blob);
+            anchor.download = "transcription.txt";
+            anchor.click();
         }
     </script>
 </body>

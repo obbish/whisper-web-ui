@@ -54,10 +54,12 @@ async function processQueue() {
 
     try {
         console.log(`Processing job: ${jobId}`);
-        
+
         // Prepare file for Whisper server
         const formData = new FormData();
         formData.append('file', fs.createReadStream(job.filePath));
+        formData.append('language', job.language || 'auto');
+        formData.append('response_format', 'text'); // Force text format for simpler handling
 
         // Send to Whisper server
         const response = await fetch('http://127.0.0.1:8080/inference', {
@@ -70,13 +72,19 @@ async function processQueue() {
             throw new Error(`Whisper server responded with ${response.status}`);
         }
 
-        const data = await response.json();
-        
-        // Assuming Whisper returns { text: "transcribed text" } based on common whisper.cpp server implementations
-        // Adjust property name if your specific version differs (e.g., data.transcription)
-        job.result = data.text || JSON.stringify(data);
+        // Handle text response since we requested response_format='text'
+        const text = await response.text();
+
+        // If the server returns JSON despite 'text' format (some do), try to parse it
+        try {
+            const json = JSON.parse(text);
+            job.result = json.text || text;
+        } catch (e) {
+            job.result = text;
+        }
+
         job.status = 'done';
-        
+
     } catch (error) {
         console.error(`Error processing job ${jobId}:`, error);
         job.error = error.message;
@@ -101,6 +109,7 @@ app.post('/upload', upload.single('file'), (req, res) => {
 
     const jobId = uuidv4();
     const position = jobQueue.length + 1;
+    const language = req.body.language || 'auto';
 
     // Create unique job entry
     jobs[jobId] = {
@@ -108,6 +117,7 @@ app.post('/upload', upload.single('file'), (req, res) => {
         status: 'queued',
         position: position,
         filePath: req.file.path,
+        language: language,
         submittedAt: new Date()
     };
 

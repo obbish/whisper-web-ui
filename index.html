@@ -241,8 +241,9 @@
     </div>
 
     <script>
-        // Relative path to avoid hardcoding IP and CORS issues
-        const SERVER_URL = "/inference";
+        // Use relative path to middleware
+        const UPLOAD_URL = "/upload";
+        const STATUS_URL = "/status/";
 
         async function uploadAndTranscribe() {
             const fileInput = document.getElementById('audioFile');
@@ -265,77 +266,103 @@
             loader.style.display = "block";
             resultArea.style.display = "none";
             textBox.value = "";
-            statusText.innerText = "Preparing audio (Decoding & Resampling)...";
+            statusText.innerText = "Converting audio to 16kHz WAV...";
 
             try {
                 // 1. Convert any input audio to 16kHz WAV
                 const wavFile = await convertAudioToWav(originalFile);
 
-                statusText.innerText = "Uploading to server & Transcribing...";
+                statusText.innerText = "Uploading to queue...";
 
                 // Prepare Data
                 const formData = new FormData();
                 formData.append("file", wavFile, "audio.wav"); // Send as 'audio.wav'
                 formData.append("language", langInput.value);
-                formData.append("response_format", "text");
 
-                const response = await fetch(SERVER_URL, {
+                // 2. Upload to Queue
+                const uploadResponse = await fetch(UPLOAD_URL, {
                     method: "POST",
                     body: formData
                 });
 
-                if (!response.ok) throw new Error("Server Error: " + response.statusText);
+                if (!uploadResponse.ok) throw new Error("Upload failed: " + uploadResponse.statusText);
 
-                const text = await response.text();
+                const { id } = await uploadResponse.json();
 
-                // Show Result
-                textBox.value = text;
-                resultArea.style.display = "block";
+                // 3. Poll Status
+                pollStatus(id);
+
             } catch (error) {
                 console.error(error);
                 alert("Error: " + error.message);
-            } finally {
                 loader.style.display = "none";
                 btn.disabled = false;
             }
         }
 
+        function pollStatus(jobId) {
+            const statusText = document.getElementById('status-text');
+            const loader = document.getElementById('loader');
+            const btn = document.getElementById('submitBtn');
+            const resultArea = document.getElementById('result-area');
+            const textBox = document.getElementById('transcriptionText');
+
+            const interval = setInterval(async () => {
+                try {
+                    const res = await fetch(STATUS_URL + jobId);
+                    const data = await res.json();
+
+                    if (data.status === 'queued') {
+                        statusText.innerText = `Waiting in line (Position: ${data.position})...`;
+                    } else if (data.status === 'processing') {
+                        statusText.innerText = 'Processing on Whisper server...';
+                    } else if (data.status === 'done') {
+                        clearInterval(interval);
+                        loader.style.display = "none";
+                        btn.disabled = false;
+
+                        textBox.value = data.result;
+                        resultArea.style.display = "block";
+                    } else if (data.status === 'error') {
+                        clearInterval(interval);
+                        alert(`Server Error: ${data.error}`);
+                        loader.style.display = "none";
+                        btn.disabled = false;
+                    }
+                } catch (err) {
+                    clearInterval(interval);
+                    alert("Network Error during polling");
+                    loader.style.display = "none";
+                    btn.disabled = false;
+                }
+            }, 1000);
+        }
+
         // --- Audio Conversion Logic (Web Audio API) ---
 
         async function convertAudioToWav(file) {
-            // Create an AudioContext (standard is usually 44.1 or 48k)
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const arrayBuffer = await file.arrayBuffer();
-
-            // Decode the audio data (handles m4a, mp3, mp4, etc. natively)
             const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-            // Whisper expects 16000Hz. If the file is already 16k, we can use it, 
-            // but it's safer to always run through the resampler to ensure clean data.
             const targetSampleRate = 16000;
 
-            // Create an OfflineContext at 16000Hz to perform the resampling
             const offlineCtx = new OfflineAudioContext(
-                1, // Force Mono (Whisper uses mono)
+                1, // Force Mono
                 audioBuffer.duration * targetSampleRate,
                 targetSampleRate
             );
 
-            // Create a buffer source for the offline context
             const source = offlineCtx.createBufferSource();
             source.buffer = audioBuffer;
             source.connect(offlineCtx.destination);
             source.start();
 
-            // Render the audio into a new buffer at 16kHz
             const resampledBuffer = await offlineCtx.startRendering();
-
-            // Convert raw PCM data to WAV file format
             return bufferToWavBlob(resampledBuffer);
         }
 
         function bufferToWavBlob(audioBuffer) {
-            const numOfChan = 1; // We enforced mono above
+            const numOfChan = 1;
             const length = audioBuffer.length * numOfChan * 2 + 44;
             const buffer = new ArrayBuffer(length);
             const view = new DataView(buffer);
@@ -345,33 +372,26 @@
             let offset = 0;
             let pos = 0;
 
-            // Get PCM data
             for (i = 0; i < audioBuffer.numberOfChannels; i++)
                 channels.push(audioBuffer.getChannelData(i));
 
-            // Write WAV Header
             setUint32(0x46464952); // "RIFF"
             setUint32(length - 8); // file length - 8
             setUint32(0x45564157); // "WAVE"
-
             setUint32(0x20746d66); // "fmt " chunk
             setUint32(16); // length = 16
             setUint16(1); // PCM (uncompressed)
             setUint16(numOfChan);
             setUint32(audioBuffer.sampleRate);
-            setUint32(audioBuffer.sampleRate * 2 * numOfChan); // avg. bytes/sec
-            setUint16(numOfChan * 2); // block-align
-            setUint16(16); // 16-bit (hardcoded)
-
+            setUint32(audioBuffer.sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2);
+            setUint16(16); // 16-bit
             setUint32(0x61746164); // "data" - chunk
-            setUint32(length - pos - 4); // chunk length
+            setUint32(length - pos - 4);
 
-            // Write interleaved data
             while (pos < audioBuffer.length) {
                 for (i = 0; i < numOfChan; i++) {
-                    // clamp
                     sample = Math.max(-1, Math.min(1, channels[i][pos]));
-                    // scale to 16-bit integer
                     sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
                     view.setInt16(offset, sample, true);
                     offset += 2;
@@ -381,15 +401,8 @@
 
             return new Blob([buffer], { type: "audio/wav" });
 
-            function setUint16(data) {
-                view.setUint16(offset, data, true);
-                offset += 2;
-            }
-
-            function setUint32(data) {
-                view.setUint32(offset, data, true);
-                offset += 4;
-            }
+            function setUint16(data) { view.setUint16(offset, data, true); offset += 2; }
+            function setUint32(data) { view.setUint32(offset, data, true); offset += 4; }
         }
 
         function downloadText() {
@@ -401,7 +414,6 @@
             anchor.click();
         }
     </script>
-
 </body>
 
 </html>
