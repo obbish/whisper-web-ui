@@ -15,3 +15,7 @@ whisper-server
 # Logs
 *.log
 
+# Temp, backups, old versions
+*.tmp
+*.bak
+*.old
