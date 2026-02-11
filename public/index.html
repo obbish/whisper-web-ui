@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="sv">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
@@ -190,7 +190,8 @@
         </div>
         <div class="form-group">
                 <select id="language">
-                <option value="sv" selected>Swedish</option>
+                <option value="auto" selected>Other / Not sure</option>
+                <option value="sv">Swedish</option>
                 <option value="en">English</option>
                 <option value="es">Spanish</option>
                 <option value="pt">Portuguese</option>
@@ -207,7 +208,7 @@
                 <option value="he">Hebrew</option>
                 <option value="bs">Bosnian</option>
                 <option value="sr">Serbian</option>
-                <option value="auto">Other / Not sure</option>
+                <option value="auto">Automatic / Other</option>
             </select>
         </div>
         <button onclick="uploadAndTranscribe()" id="submitBtn">Transcribe</button>
@@ -265,7 +266,7 @@
                 formData.append("file", UI.audioFile.files[0]);
                 formData.append("language", UI.language.value);
                 const res = await fetch(UPLOAD_URL, { method: "POST", body: formData });
-                if (!res.ok) throw new Error("Blev fel vid uppladdning");
+                if (!res.ok) throw new Error("Upload failed");
                 const { id } = await res.json();
                 currentJobId = id; // Store job ID for cancellation
                 UI.statusText.innerText = "Preparing and normalizing...";
@@ -288,7 +289,7 @@
                             for (let i = data.logs.length - 1; i >= 0; i--) {
                                 const match = data.logs[i].match(/progress\s*=\s*(\d+(?:\.\d+)?)/);
                                 if (match) {
-                                    progress = ` ${Math.min(100, Math.round(parseFloat(match[1])))}% klar`;
+                                    progress = ` ${Math.min(100, Math.round(parseFloat(match[1])))}% done`;
                                     break;
                                 }
                             }

@@ -6,7 +6,7 @@
     <string>com.whisper.server</string>
 
     <key>UserName</key>
-    <string>YOUR_USER</string>
+    <string>root</string>
 
     <key>EnvironmentVariables</key>
     <dict>
