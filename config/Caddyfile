@@ -1,0 +1,16 @@
+example.com {
+    # Replace with your domain and cert paths
+    tls /path/to/fullchain.pem /path/to/privkey.pem
+
+    reverse_proxy localhost:3000 {
+        # 1. Disable buffering (Stream immediately)
+        flush_interval -1
+
+        # 2. Force HTTP/1.1 and disable Keep-Alive (Maximum Stability)
+        transport http {
+            keepalive off
+            response_header_timeout 10m
+            read_buffer 8192
+        }
+    }
+}

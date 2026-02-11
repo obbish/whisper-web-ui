@@ -1,0 +1,35 @@
+{
+  "sv": {
+    "model": "/path/to/whisper/models/ggml-kb-model-q5_0.bin"
+  },
+  "en": {
+    "model": "/path/to/whisper/models/ggml-large-v3-turbo.bin"
+  },
+  "es": {
+    "model": "/path/to/whisper/models/ggml-large-v3-turbo.bin"
+  },
+  "pt": {
+    "model": "/path/to/whisper/models/ggml-large-v3-turbo.bin"
+  },
+  "fr": {
+    "model": "/path/to/whisper/models/ggml-large-v3-turbo.bin"
+  },
+  "it": {
+    "model": "/path/to/whisper/models/ggml-large-v3-turbo.bin"
+  },
+  "ar": {
+    "model": "/path/to/whisper/models/ggml-large-v3-turbo.bin"
+  },
+  "ru": {
+    "model": "/path/to/whisper/models/ggml-large-v3-turbo.bin"
+  },
+  "pl": {
+    "model": "/path/to/whisper/models/ggml-large-v3-turbo.bin"
+  },
+  "auto": {
+    "model": "/path/to/whisper/models/ggml-large-v3-turbo.bin"
+  },
+  "_default": {
+    "model": "/path/to/whisper/models/ggml-large-v3-turbo.bin"
+  }
+}

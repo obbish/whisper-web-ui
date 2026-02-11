@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="sv">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper Web UI</title>
+    <!-- favicon intentionally removed for public template -->
+    <!-- <link rel="icon" type="image/png" href="favicon.png"> -->
+    <style>
+        :root {
+            --primary: #dcdcdc;
+                --bg: #f7f7f7;
+                --card: #ffffff;
+                --text: #222222;
+                --grey-text: #666666;
+                --accent: #888888;
+                --action: #555555;
+                --success: #444444;
+            --gap: 25px;
+            --radius-main: 18px;
+            --radius-small: 10px;
+            --radius-btn: 12px;
+            --font-main: 16px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+            font-size: var(--font-main);
+        }
+
+        .container {
+            background: var(--card);
+            padding: 30px;
+            border-radius: var(--radius-main);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            width: 100%;
+            max-width: 600px;
+        }
+
+        h1 {
+            margin: 0 0 5px 0;
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        h1 .highlight {
+            color: var(--accent);
+        }
+
+        .tagline {
+            font-style: italic;
+            margin: 0;
+        }
+
+        .header-group {
+            margin: 0 auto calc(var(--gap) * 2);
+        }
+
+        .form-group {
+            margin-bottom: var(--gap);
+        }
+
+        input,
+        select,
+        textarea,
+        button {
+            width: 100%;
+            border: none;
+            font-size: 1rem;
+            box-sizing: border-box;
+            transition: opacity 0.2s, background 0.2s;
+        }
+
+        input,
+        select,
+        textarea {
+            padding: 12px;
+            border-radius: var(--radius-small);
+        }
+
+        button {
+            padding: 16px;
+            border-radius: var(--radius-btn);
+            cursor: pointer;
+            color: #FFF;
+        }
+
+        button:hover:not(:disabled) {
+            opacity: 0.9;
+        }
+
+        #drop-zone {
+            border: 2px dotted var(--accent);
+            border-radius: 15px;
+            padding: 20px;
+            min-height: 90px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            background: #ffffff;
+            cursor: pointer;
+            position: relative;
+        }
+
+        #drop-zone p,
+        #file-name {
+            margin: 0;
+            color: var(--grey-text);
+        }
+
+        #file-name {
+            display: none;
+            color: var(--text);
+        }
+
+        #submitBtn {
+            background: var(--action);
+        }
+
+        #submitBtn:disabled {
+            background: var(--primary);
+            cursor: not-allowed;
+        }
+
+        .download-btn {
+            background: var(--success);
+            margin-top: var(--gap);
+        }
+
+        .loader {
+            display: none;
+            text-align: center;
+            margin-top: var(--gap);
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        #status-text {
+            margin-top: 10px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #result-area {
+            display: none;
+            margin-top: var(--gap);
+        }
+
+        textarea {
+            height: 300px;
+            font-family: monospace;
+            line-height: 1.5;
+            resize: vertical;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header-group">
+            <h1>Whisper Web UI</h1>
+            <p class="tagline">Transcribe audio locally</p>
+        </div>
+        <div class="form-group">
+            <div id="drop-zone" onclick="UI.audioFile.click()">
+                <p>Click or drop audio or video here.</p>
+                <div id="file-name"></div>
+                <input type="file" id="audioFile" accept="audio/*,video/*,.wma,.mkv" style="display: none;">
+            </div>
+        </div>
+        <div class="form-group">
+                <select id="language">
+                <option value="sv" selected>Swedish</option>
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="pt">Portuguese</option>
+                <option value="fr">French</option>
+                <option value="it">Italian</option>
+                <option value="ar">Arabic</option>
+                <option value="ru">Russian</option>
+                <option value="pl">Polish</option>
+                <option value="de">German</option>
+                <option value="uk">Ukrainian</option>
+                <option value="ro">Romanian</option>
+                <option value="el">Greek</option>
+                <option value="hu">Hungarian</option>
+                <option value="he">Hebrew</option>
+                <option value="bs">Bosnian</option>
+                <option value="sr">Serbian</option>
+                <option value="auto">Other / Not sure</option>
+            </select>
+        </div>
+        <button onclick="uploadAndTranscribe()" id="submitBtn">Transcribe</button>
+        <div class="loader" id="loader">
+            <div class="spinner"></div>
+            <p id="status-text">Loading...</p>
+        </div>
+        <div id="result-area">
+            <textarea id="transcriptionText" readonly></textarea>
+            <button class="download-btn" onclick="downloadText()">Download as text</button>
+        </div>
+    </div>
+    <script>
+        const UPLOAD_URL = "/upload", STATUS_URL = "/status/", CANCEL_URL = "/cancel/";
+        let currentTranscriptionName = "transcription";
+        let currentJobId = null; // Track current job for cancellation
+
+        const UI = {
+            dropZone: document.getElementById('drop-zone'),
+            audioFile: document.getElementById('audioFile'),
+            fileName: document.getElementById('file-name'),
+            submitBtn: document.getElementById('submitBtn'),
+            loader: document.getElementById('loader'),
+            statusText: document.getElementById('status-text'),
+            resultArea: document.getElementById('result-area'),
+            textBox: document.getElementById('transcriptionText'),
+            language: document.getElementById('language')
+        };
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(name => {
+            UI.dropZone.addEventListener(name, e => {
+                e.preventDefault(); e.stopPropagation();
+            });
+        });
+
+        UI.dropZone.addEventListener('drop', e => {
+            if (e.dataTransfer.files.length) { UI.audioFile.files = e.dataTransfer.files; handleFileSelect(); }
+        });
+
+        UI.audioFile.addEventListener('change', handleFileSelect);
+
+        function handleFileSelect() {
+            if (UI.audioFile.files.length) {
+                UI.fileName.innerText = UI.audioFile.files[0].name;
+                UI.fileName.style.display = 'block';
+                UI.dropZone.querySelector('p').style.display = 'none';
+            }
+        }
+
+        async function uploadAndTranscribe() {
+            if (!UI.audioFile.files.length) return alert("Please select a file.");
+                UI.submitBtn.disabled = true; UI.loader.style.display = "block"; UI.resultArea.style.display = "none"; UI.textBox.value = ""; UI.statusText.innerText = "Uploading...";
+            try {
+                const formData = new FormData();
+                formData.append("file", UI.audioFile.files[0]);
+                formData.append("language", UI.language.value);
+                const res = await fetch(UPLOAD_URL, { method: "POST", body: formData });
+                if (!res.ok) throw new Error("Blev fel vid uppladdning");
+                const { id } = await res.json();
+                currentJobId = id; // Store job ID for cancellation
+                UI.statusText.innerText = "Preparing and normalizing...";
+                pollStatus(id);
+            } catch (e) {
+                alert(e.message); UI.loader.style.display = "none"; UI.submitBtn.disabled = false;
+            }
+        }
+
+        function pollStatus(id) {
+            const interval = setInterval(async () => {
+                try {
+                    const res = await fetch(STATUS_URL + id), data = await res.json();
+                    const name = UI.audioFile.files.length ? UI.audioFile.files[0].name : 'filen';
+                    if (data.status === 'queued') UI.statusText.innerText = `Your audio is queued. Position in queue: ${data.position}`;
+                    else if (data.status === 'processing') {
+                        // Extract progress percentage from logs
+                        let progress = '';
+                        if (data.logs && data.logs.length > 0) {
+                            for (let i = data.logs.length - 1; i >= 0; i--) {
+                                const match = data.logs[i].match(/progress\s*=\s*(\d+(?:\.\d+)?)/);
+                                if (match) {
+                                    progress = ` ${Math.min(100, Math.round(parseFloat(match[1])))}% klar`;
+                                    break;
+                                }
+                            }
+                        }
+                        UI.statusText.innerText = `Transcribing... ${progress}`;
+                    } else if (data.status === 'done') {
+                        clearInterval(interval); UI.loader.style.display = "none"; UI.submitBtn.disabled = false;
+                        UI.textBox.value = data.result; UI.resultArea.style.display = "block"; UI.resultArea.scrollIntoView({ behavior: "smooth" });
+                        if (UI.audioFile.files.length) currentTranscriptionName = UI.audioFile.files[0].name.replace(/\.[^/.]+$/, "");
+                        currentJobId = null; // Clear job ID
+                    } else if (data.status === 'error') {
+                        clearInterval(interval); alert(`Server Error: ${data.error}`); UI.loader.style.display = "none"; UI.submitBtn.disabled = false;
+                        currentJobId = null; // Clear job ID
+                    }
+                } catch (e) { clearInterval(interval); }
+            }, 1000);
+        }
+
+        function downloadText() {
+            const blob = new Blob([UI.textBox.value], { type: "text/plain" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob); a.download = currentTranscriptionName + ".txt"; a.click();
+        }
+
+        // Cancel job if user leaves while processing or queued
+        function cancelCurrentJob() {
+            if (currentJobId) {
+                fetch(CANCEL_URL + currentJobId, { 
+                    method: 'POST',
+                    keepalive: true  // Allow request to complete even after page unload
+                }).catch(err => {
+                    console.log('Failed to cancel job:', err);
+                });
+            }
+        }
+
+        // Use pagehide instead of beforeunload (more reliable)
+        window.addEventListener('pagehide', cancelCurrentJob);
+        
+        // Fallback to beforeunload for safety
+        window.addEventListener('beforeunload', cancelCurrentJob);
+    </script>
+</body>
+
+</html>

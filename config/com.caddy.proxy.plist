@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.caddy.proxy</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/path/to/your/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/var/root</string>
+    </dict>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/caddy</string>
+        <string>run</string>
+        <string>--config</string>
+        <string>/path/to/web_queue/Caddyfile</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/path/to/web_queue</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/caddy.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/caddy.err</string>
+</dict>
+</plist>

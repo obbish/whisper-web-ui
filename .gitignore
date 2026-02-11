@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+## Build / runtime
+node_modules/
+/bin/
+/uploads/
+/tmp/
+
+## Models and binaries (ignore local copies; keep remote or system-managed models out of git)
+*.bin
+models/
+
+## macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+## Editor
+.vscode/
+.idea/
+*.swp
+
+## Logs and temp
+*.log
+*.tmp
+*.bak
+*.old
+
+## Secrets
+.env
