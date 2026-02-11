@@ -6,7 +6,7 @@ Upload an audio file → AI processes locally → get transcription. No cloud se
 
 ---
 
-## Get Running in 5 Minutes
+## Get Running in 5 Minutes (Should be good for local setups)
 
 ### 1. Install dependencies (macOS)
 
@@ -59,7 +59,7 @@ Open **http://localhost:3000** and upload an audio file.
 
 ---
 
-## Advanced: System-wide Deployment
+## Want remote users to access your web transcirption service? 
 
 To run as macOS system services that start automatically:
 
@@ -112,7 +112,7 @@ sudo launchctl list | grep whisper
 
 ---
 
-## HTTPS & Reverse Proxy (Optional)
+## HTTPS & Reverse Proxy (Recommended if users come from other computers)
 
 Edit [Caddyfile](Caddyfile) to configure hostname, ports, and TLS:
 
