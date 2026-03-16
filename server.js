@@ -67,6 +67,20 @@ function getModelPath(language) {
 }
 
 /**
+ * Helper: Normalize transcription output by inserting newlines after sentence-ending punctuation.
+ */
+function formatTranscription(text) {
+    if (!text || typeof text !== 'string') return text;
+
+    // Normalize line endings first
+    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+
+    // Insert a line break after each sentence-ending punctuation.
+    // This is intentionally simple (after '.', '!' or '?').
+    return text.replace(/([.!?])\s*/g, '$1\n');
+}
+
+/**
  * Helper: Run whisper-cli command as a Promise and capture progress
  */
 function runWhisper(audioPath, language, jobId) {
@@ -151,7 +165,7 @@ async function processQueue() {
         // STEP 2: Run Whisper CLI on CLEAN file
         console.log(`Transcribing with whisper-cli...`);
         const transcriptionText = await runWhisper(cleanFilePath, job.language, jobId);
-        job.result = transcriptionText;
+        job.result = formatTranscription(transcriptionText);
         job.status = 'done';
 
     } catch (error) {
